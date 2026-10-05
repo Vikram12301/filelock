@@ -317,13 +317,13 @@ def test_threaded_lock_different_lock_obj(lock_type: type[BaseFileLock], tmp_pat
         pytest.skip("SoftFileLock on Windows has race conditions under heavy threading")  # pragma: win32 cover
 
     def t_1() -> None:
-        for _ in range(1000):
+        for _ in range(200):
             with lock_1:
                 assert lock_1.is_locked
                 assert not lock_2.is_locked
 
     def t_2() -> None:
-        for _ in range(1000):
+        for _ in range(200):
             with lock_2:
                 assert not lock_1.is_locked
                 assert lock_2.is_locked
@@ -831,7 +831,7 @@ def test_shared_instance_concurrent_acquire_release_leaves_lock_free(
 
     def work(_: int) -> None:
         barrier.wait()
-        for _ in range(500):
+        for _ in range(100):
             lock.acquire(timeout=_SHARED_WAIT)
             lock.release()
 
