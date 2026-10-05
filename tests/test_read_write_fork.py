@@ -30,6 +30,7 @@ _NEEDS_FD_DIRECTORY: Final[pytest.MarkDecorator] = pytest.mark.skipif(
 
 
 @NEEDS_AUDIT_EVENTS
+@NEEDS_THREADING_AFTER_FORK
 def test_read_write_lock_closes_idle_connections(tmp_path: Path) -> None:
     lock_path = tmp_path / "idle.db"
     connection_events = 0
@@ -240,6 +241,7 @@ def test_read_write_lock_survives_normal_fork_child_exit(
 
 
 @NEEDS_FORK  # pragma: needs fork
+@NEEDS_THREADING_AFTER_FORK
 def test_read_write_lock_fork_waits_for_sqlite_operation(tmp_path: Path) -> None:
     result = _run_fork_script(_fork_during_sqlite_script(), [str(tmp_path / "fork-gate.db")], timeout=15)
 
