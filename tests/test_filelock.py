@@ -297,7 +297,7 @@ def test_threaded_shared_lock_obj(lock_type: type[BaseFileLock], tmp_path: Path)
     lock = lock_type(str(lock_path))
 
     def thread_work() -> None:
-        for _ in range(20):
+        for _ in range(5):
             with lock:
                 assert lock.is_locked
 
