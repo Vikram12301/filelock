@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import warnings
 from contextlib import suppress
 from errno import EACCES, EAGAIN, ENOSYS, EWOULDBLOCK
@@ -57,6 +58,37 @@ else:  # pragma: win32 no cover
         def _unlock_fd(fd: int) -> None:
             fcntl.flock(fd, fcntl.LOCK_UN)
 
+        # One gate per lock file path serializes this process's threads in front of flock(), so two threads of one
+        # process never hold the same path at once, whichever way the platform's flock() treats descriptors. Keyed
+        # by path so a lock file that does not exist yet is still gated.
+        class _IntraProcessGates:
+            def __init__(self) -> None:
+                self.reset()
+
+            def reset(self) -> None:
+                self.guard = threading.Lock()
+                self.by_path: dict[str, threading.Lock] = {}
+
+            def gate(self, path: str) -> threading.Lock:
+                with self.guard:
+                    gate = self.by_path.get(path)
+                    if gate is None:
+                        gate = self.by_path[path] = threading.Lock()
+                    return gate
+
+        _intra_process_gates = _IntraProcessGates()
+
+        def _intra_process_gate(path: str) -> threading.Lock:
+            return _intra_process_gates.gate(path)
+
+        def _reset_intra_process_gates_in_child() -> None:  # pragma: forked child
+            # A forked child inherits each gate in whatever state the parent's threads left it. A gate held by a thread
+            # that exists only in the parent would never open, so the child starts with fresh, unheld gates.
+            _intra_process_gates.reset()
+
+        if hasattr(os, "register_at_fork"):  # pragma: needs fork
+            os.register_at_fork(after_in_child=_reset_intra_process_gates_in_child)
+
     class UnixFileLock(BaseFileLock):
         """
         Uses the :func:`fcntl.flock` to hard lock the lock file on unix systems.
@@ -67,9 +99,19 @@ else:  # pragma: win32 no cover
         """
 
         def _acquire(self) -> None:
-            missing_flock = self._acquire_native()
-            if missing_flock is not None:
-                self._switch_to_soft_lock(*missing_flock)
+            gate = _intra_process_gate(self.lock_file)
+            if not gate.acquire(blocking=False):
+                return  # a sibling thread in this process is already attempting or holding this lock file
+            keep_gate = False
+            try:
+                missing_flock = self._acquire_native()
+                if missing_flock is not None:
+                    self._switch_to_soft_lock(*missing_flock)
+                else:
+                    keep_gate = self._context.lock_file_fd is not None
+            finally:
+                if not keep_gate:
+                    gate.release()
 
         def _acquire_native(self) -> tuple[int, OSError] | None:
             ensure_directory_exists(self.lock_file)
@@ -178,6 +220,8 @@ else:  # pragma: win32 no cover
             _unlock_fd(fd)
             self._mark_descriptor_released()
             self._close_released_fd(fd, default_suppresses=True)
+            # Release the gate last, so a sibling thread never sees it open while the kernel lock is still held.
+            _intra_process_gate(self.lock_file).release()
 
 
 if sys.platform == "win32":  # pragma: win32 cover
