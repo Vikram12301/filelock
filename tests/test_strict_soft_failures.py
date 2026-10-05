@@ -388,7 +388,7 @@ def test_strict_soft_link_and_directory_close_failures_preserve_both(tmp_path: P
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert ([str(error) for error in raised.value.exceptions], lock.claims, lock.is_locked) == (
-        ["[Errno 5] link failed", "[Errno 5] directory close failed"],
+        [f"[Errno {EIO}] link failed", f"[Errno {EIO}] directory close failed"],
         (),
         False,
     )
@@ -556,7 +556,7 @@ def test_strict_soft_release_preserves_unlink_and_directory_close_errors(tmp_pat
         lock.lock_counter,
         [claim.state for claim in lock.claims],
     ) == (
-        ["[Errno 13] claim unlink failed", "[Errno 5] directory close failed"],
+        [f"[Errno {EACCES}] claim unlink failed", f"[Errno {EIO}] directory close failed"],
         True,
         1,
         ["held"],
@@ -622,9 +622,9 @@ def test_strict_soft_doorway_preserves_every_claim_cleanup_error(tmp_path: Path,
         lock.is_locked,
     ) == (
         [
-            "[Errno 13] held unlink failed",
-            "[Errno 5] held directory close failed",
-            "[Errno 5] intent directory close failed",
+            f"[Errno {EACCES}] held unlink failed",
+            f"[Errno {EIO}] held directory close failed",
+            f"[Errno {EIO}] intent directory close failed",
         ],
         [competitor_name, f"held-v1-{owner_token}.claim"],
         True,
@@ -1019,7 +1019,7 @@ def test_strict_soft_sentinel_inspection_and_close_failure_group(tmp_path: Path,
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert ([str(error) for error in raised.value.exceptions], lock.is_locked) == (
-        ["[Errno 5] sentinel inspection failed", "[Errno 5] sentinel close failed"],
+        [f"[Errno {EIO}] sentinel inspection failed", f"[Errno {EIO}] sentinel close failed"],
         False,
     )
 
@@ -1237,7 +1237,7 @@ def test_strict_soft_record_finalization_close_and_unlink_failures_group(tmp_pat
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert (sorted(str(error) for error in raised.value.exceptions), lock.is_locked) == (
-        ["[Errno 13] unlink denied", "[Errno 5] private close failed"],
+        [f"[Errno {EACCES}] unlink denied", f"[Errno {EIO}] private close failed"],
         False,
     )
 
@@ -1254,7 +1254,7 @@ def test_strict_soft_release_claim_unlink_failures_group(tmp_path: Path, mocker:
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.release()
     assert ([str(error) for error in raised.value.exceptions], lock.is_locked, len(lock.claims)) == (
-        ["[Errno 13] claim unlink denied", "[Errno 13] claim unlink denied"],
+        [f"[Errno {EACCES}] claim unlink denied", f"[Errno {EACCES}] claim unlink denied"],
         True,
         2,
     )
@@ -1388,7 +1388,7 @@ def test_strict_soft_record_read_and_close_failure_group(tmp_path: Path, mocker:
     messages = [str(error) for error in raised.value.exceptions]
     assert (
         any("exceeds 1024 bytes" in message for message in messages),
-        "[Errno 5] record close failed" in messages,
+        f"[Errno {EIO}] record close failed" in messages,
     ) == (
         True,
         True,
@@ -1453,7 +1453,7 @@ def test_strict_soft_held_link_and_directory_close_failure(tmp_path: Path, mocke
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert ([str(error) for error in raised.value.exceptions], lock.is_locked, lock.claims) == (
-        ["[Errno 5] held link failed", "[Errno 5] held link directory close failed"],
+        [f"[Errno {EIO}] held link failed", f"[Errno {EIO}] held link directory close failed"],
         False,
         (),
     )

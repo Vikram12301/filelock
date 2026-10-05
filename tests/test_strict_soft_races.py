@@ -228,7 +228,7 @@ def test_strict_soft_shared_instance_waits_for_failed_doorway(tmp_path: Path, mo
     fail_first.set()
     _join_threads(first, second)
     assert ([str(error) for error in first_errors], second_entered.is_set(), lock.is_locked) == (
-        ["[Errno 5] doorway failed"],
+        [f"[Errno {EIO}] doorway failed"],
         True,
         False,
     )
