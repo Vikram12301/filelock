@@ -39,6 +39,16 @@ NEEDS_FORK1: Final[pytest.MarkDecorator] = pytest.mark.skipif(
     not CAPABILITIES["fork1"], reason="forking a single thread needs the Solaris os.fork1"
 )
 
+NEEDS_THREADING_AFTER_FORK: Final[pytest.MarkDecorator] = pytest.mark.skipif(
+    not CAPABILITIES["threading-after-fork"],
+    reason="this runtime cannot start a new thread in a child forked from an already multi-threaded parent",
+)
+
+NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION: Final[pytest.MarkDecorator] = pytest.mark.skipif(
+    not CAPABILITIES["flock-per-open-file-description"],
+    reason="this runtime's flock grants the lock to every descriptor of the file, not just the one holding it",
+)
+
 NEEDS_FCNTL: Final[pytest.MarkDecorator] = pytest.mark.skipif(
     not CAPABILITIES["fcntl"], reason="native flock semantics need the fcntl module"
 )
@@ -112,6 +122,7 @@ __all__ = [
     "NEEDS_FCNTL",
     "NEEDS_FILE_MODE",
     "NEEDS_FILE_PERMISSIONS",
+    "NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION",
     "NEEDS_FORK",
     "NEEDS_FORK1",
     "NEEDS_GENERATOR_EXCEPTION_CONTEXT",
@@ -120,6 +131,7 @@ __all__ = [
     "NEEDS_PROMPT_FINALIZATION",
     "NEEDS_REGISTER_AT_FORK",
     "NEEDS_SYMLINK",
+    "NEEDS_THREADING_AFTER_FORK",
     "NEEDS_UNLINK_OPEN_FILE",
     "SKIP_ON_UNRELIABLE_PROCESS_SYNC",
     "XFAIL_WITHOUT_COROUTINE_CANCELLATION",

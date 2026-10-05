@@ -13,7 +13,11 @@ import pytest
 from filelock import BaseFileLock
 from filelock._soft_rw._protocol import GenerationLog
 from filelock._soft_rw._storage import OsFiles
-from tests.capability_marks import NEEDS_CLASS_COLLECTION, NEEDS_FORK
+from tests.capability_marks import (
+    NEEDS_CLASS_COLLECTION,
+    NEEDS_FORK,
+    NEEDS_THREADING_AFTER_FORK,
+)
 from tests.fork_helpers import exit_child, fork_process
 
 if TYPE_CHECKING:
@@ -21,6 +25,7 @@ if TYPE_CHECKING:
 
 
 @NEEDS_FORK
+@NEEDS_THREADING_AFTER_FORK
 def test_equal_unhashable_locks_reset_independently(tmp_path: Path) -> None:  # pragma: win32 no cover
     @dataclass(eq=True, init=False)  # pragma: win32 no cover
     class EqualLock(BaseFileLock):  # pragma: win32 no cover

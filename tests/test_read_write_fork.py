@@ -18,6 +18,7 @@ from tests.capability_marks import (
     NEEDS_COLLECTED_FINALIZATION,
     NEEDS_FORK,
     NEEDS_FORK1,
+    NEEDS_THREADING_AFTER_FORK,
 )
 
 if TYPE_CHECKING:
@@ -217,6 +218,7 @@ def test_read_write_lock_serializes_other_thread_operation_during_acquisition(
         ),
     ],
 )
+@NEEDS_THREADING_AFTER_FORK
 def test_read_write_lock_survives_normal_fork_child_exit(
     tmp_path: Path,
     mode: Literal["read", "write"],
@@ -312,6 +314,7 @@ def test_read_write_lock_subclass_cache_resets_after_fork(tmp_path: Path) -> Non
 
 @NEEDS_FORK  # pragma: needs fork
 @pytest.mark.parametrize("held", [pytest.param(False, id="idle"), pytest.param(True, id="held")])
+@NEEDS_THREADING_AFTER_FORK
 def test_async_read_write_lock_fork_behavior(tmp_path: Path, held: bool) -> None:
     result = _run_fork_script(
         _async_fork_script(),

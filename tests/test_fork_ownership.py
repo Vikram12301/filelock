@@ -23,7 +23,11 @@ from filelock import (
     SoftReadWriteLock,
     Timeout,
 )
-from tests.capability_marks import NEEDS_FORK, NEEDS_REGISTER_AT_FORK
+from tests.capability_marks import (
+    NEEDS_FORK,
+    NEEDS_REGISTER_AT_FORK,
+    NEEDS_THREADING_AFTER_FORK,
+)
 from tests.fork_helpers import exit_child, fork_process
 
 if TYPE_CHECKING:
@@ -49,6 +53,7 @@ _FORK_WARNING: Final[pytest.MarkDecorator] = pytest.mark.filterwarnings(
         pytest.param(SoftFileLock, "collect", id="soft-collect"),
     ],
 )
+@NEEDS_THREADING_AFTER_FORK
 def test_child_cleanup_preserves_parent_lock(
     tmp_path: Path,
     lock_type: type[BaseFileLock],
@@ -79,6 +84,7 @@ def test_child_cleanup_preserves_parent_lock(
         pytest.param(AsyncSoftFileLock, SoftFileLock, id="soft"),
     ],
 )
+@NEEDS_THREADING_AFTER_FORK
 def test_async_child_release_preserves_parent_lock(
     tmp_path: Path,
     async_lock_type: type[BaseAsyncFileLock],
@@ -105,6 +111,7 @@ def test_async_child_release_preserves_parent_lock(
 @pytest.mark.requires_hard_links
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
+@NEEDS_THREADING_AFTER_FORK
 def test_soft_read_write_resets_older_same_path_instance(tmp_path: Path) -> None:  # pragma: needs hard-link
     path = str(tmp_path / "parent.lock")
     older = SoftReadWriteLock(path, is_singleton=False, heartbeat_interval=0.1, stale_threshold=0.5)
@@ -133,6 +140,7 @@ def test_soft_read_write_resets_older_same_path_instance(tmp_path: Path) -> None
 
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
+@NEEDS_THREADING_AFTER_FORK
 def test_child_closes_descriptor_held_by_vanished_thread(tmp_path: Path) -> None:
     path = str(tmp_path / "parent.lock")
     descriptor: Queue[int] = Queue()
@@ -162,6 +170,7 @@ def test_child_closes_descriptor_held_by_vanished_thread(tmp_path: Path) -> None
 
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
+@NEEDS_THREADING_AFTER_FORK
 def test_fork_waits_for_descriptor_registration(tmp_path: Path, mocker: MockerFixture) -> None:
     path = str(tmp_path / "parent.lock")
     lock = FileLock(path, thread_local=False, is_singleton=False)
@@ -201,6 +210,7 @@ def test_fork_waits_for_descriptor_registration(tmp_path: Path, mocker: MockerFi
 
 
 @NEEDS_REGISTER_AT_FORK
+@NEEDS_THREADING_AFTER_FORK
 def test_unrelated_acquisitions_reach_filesystem_boundary_concurrently(  # pragma: needs fork
     tmp_path: Path, mocker: MockerFixture
 ) -> None:
@@ -241,6 +251,7 @@ def test_unrelated_acquisitions_reach_filesystem_boundary_concurrently(  # pragm
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 @pytest.mark.parametrize("lock_type", [pytest.param(FileLock, id="native"), pytest.param(SoftFileLock, id="soft")])
+@NEEDS_THREADING_AFTER_FORK
 def test_child_singleton_registry_drops_parent_instance(tmp_path: Path, lock_type: type[BaseFileLock]) -> None:
     path = str(tmp_path / "parent.lock")
     parent_lock = lock_type(path, is_singleton=True)

@@ -15,6 +15,7 @@ import signal
 import socket
 import sys
 import tempfile
+import threading
 import weakref
 from asyncio import CancelledError
 from contextlib import asynccontextmanager, contextmanager
@@ -50,6 +51,62 @@ def _supports_unlinking_an_open_file() -> bool:
             except OSError:
                 return False
         return True
+
+
+def _supports_threading_after_fork() -> bool:
+    # A process that forks while already multi-threaded can leave this runtime's thread machinery unable to start
+    # any new thread afterward - CPython itself warns "use of fork() may lead to deadlocks in the child" for
+    # exactly this reason, and on at least one runtime the failure is not a deadlock but every subsequent
+    # threading.Thread.start() raising RuntimeError. Probe for it directly: make this process multi-threaded, fork,
+    # and ask the child to start a thread of its own.
+    if not hasattr(os, "fork"):
+        return False
+    stop = threading.Event()
+    background = threading.Thread(target=stop.wait, daemon=True)
+    background.start()
+    read_fd, write_fd = os.pipe()
+    try:
+        try:
+            pid = os.fork()
+        except OSError:
+            return False
+        if pid == 0:
+            os.close(read_fd)
+            try:
+                threading.Thread(target=lambda: None).start()
+                os.write(write_fd, b"1")
+            except BaseException:  # ruff:ignore[blind-except]  # any failure here means the capability is absent
+                os.write(write_fd, b"0")
+            os._exit(0)
+        os.close(write_fd)
+        try:
+            supported = os.read(read_fd, 1) == b"1"
+        finally:
+            os.close(read_fd)
+        os.waitpid(pid, 0)
+        return supported
+    finally:
+        stop.set()
+        background.join(timeout=1)
+
+
+def _flock_separates_open_file_descriptions() -> bool:
+    # flock() is specified per open file description: a second descriptor for the same file must contend even within
+    # one process. Some platforms track the lock per file instead and grant it to every descriptor.
+    if find_spec("fcntl") is None:
+        return False
+    fcntl = import_module("fcntl")
+    with tempfile.TemporaryDirectory() as directory:
+        probe = Path(directory, "probe")
+        probe.touch()
+        with probe.open("r+b") as holder, probe.open("r+b") as contender:
+            fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(contender.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return True
+            fcntl.flock(contender.fileno(), fcntl.LOCK_UN)
+            return False
 
 
 def _honors_link_follow_symlinks() -> bool:
@@ -253,6 +310,9 @@ CAPABILITIES: Final[dict[str, bool]] = {
     # Narrower than "dir-fd": GraalPy takes os.open relative to a directory descriptor but not os.link.
     "link-dir-fd": hasattr(os, "link") and os.link in os.supports_dir_fd,
     "fork1": hasattr(os, "fork1"),
+    # Narrower still: a runtime can fork fine yet refuse every thread started afterward.
+    "threading-after-fork": _supports_threading_after_fork(),
+    "flock-per-open-file-description": _flock_separates_open_file_descriptions(),
     "hard-link": hasattr(os, "link"),
     "symlink": _supports_symlink(),
     "fcntl": find_spec("fcntl") is not None,
