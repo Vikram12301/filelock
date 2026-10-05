@@ -25,7 +25,13 @@ from filelock._soft_rw import _storage as storage_mod
 from filelock._soft_rw import _sync as sync_mod
 from filelock._soft_rw._protocol import GenerationLog, Snapshot, encode_holder, new_token
 from filelock._soft_rw._storage import OsFiles
-from tests.capability_marks import NEEDS_FILE_MODE, NEEDS_FORK, NEEDS_POSIX_SIGNALS, SKIP_ON_UNRELIABLE_PROCESS_SYNC
+from tests.capability_marks import (
+    NEEDS_FILE_MODE,
+    NEEDS_FORK,
+    NEEDS_POSIX_SIGNALS,
+    NEEDS_THREADING_AFTER_FORK,
+    SKIP_ON_UNRELIABLE_PROCESS_SYNC,
+)
 from tests.process_helpers import cleanup_processes
 
 if TYPE_CHECKING:
@@ -1005,7 +1011,12 @@ def test_stray_files_in_the_protocol_directories_are_ignored(lock_file: str, loc
     [
         pytest.param("reuse-raises", ("foo.lock",), id="reuse-raises"),
         pytest.param("release-is-silent", ("foo.lock",), id="release-is-silent"),
-        pytest.param("fresh-lock-after-fork", ("parent.lock", "child.lock"), id="fresh-lock-after-fork"),
+        pytest.param(
+            "fresh-lock-after-fork",
+            ("parent.lock", "child.lock"),
+            id="fresh-lock-after-fork",
+            marks=NEEDS_THREADING_AFTER_FORK,
+        ),
     ],
 )
 def test_child_fork_lock_behavior(tmp_path: Path, scenario: str, names: tuple[str, ...]) -> None:  # pragma: needs fork

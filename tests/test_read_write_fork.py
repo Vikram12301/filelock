@@ -30,6 +30,8 @@ _NEEDS_FD_DIRECTORY: Final[pytest.MarkDecorator] = pytest.mark.skipif(
 
 @NEEDS_AUDIT_EVENTS
 def test_read_write_lock_closes_idle_connections(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     lock_path = tmp_path / "idle.db"
     connection_events = 0
 
@@ -223,6 +225,8 @@ def test_read_write_lock_survives_normal_fork_child_exit(
     fork_name: Literal["fork", "fork1"],
     reject_audit_hook: bool,
 ) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     result = _run_fork_script(
         _fork_script(),
         [
@@ -239,6 +243,8 @@ def test_read_write_lock_survives_normal_fork_child_exit(
 
 @NEEDS_FORK  # pragma: needs fork
 def test_read_write_lock_fork_waits_for_sqlite_operation(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     result = _run_fork_script(_fork_during_sqlite_script(), [str(tmp_path / "fork-gate.db")], timeout=15)
 
     assert result == (0, "", "")
@@ -313,6 +319,8 @@ def test_read_write_lock_subclass_cache_resets_after_fork(tmp_path: Path) -> Non
 @NEEDS_FORK  # pragma: needs fork
 @pytest.mark.parametrize("held", [pytest.param(False, id="idle"), pytest.param(True, id="held")])
 def test_async_read_write_lock_fork_behavior(tmp_path: Path, held: bool) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     result = _run_fork_script(
         _async_fork_script(),
         [str(tmp_path / "async-fork.db"), "held" if held else "idle"],

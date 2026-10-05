@@ -19,6 +19,11 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.requires_hard_links
 
 
+def _follow_symlinks_kwargs(follow_symlinks: bool | None) -> dict[str, bool]:
+    # Forward the flag only when a caller set it: some platforms reject follow_symlinks even when it is True.
+    return {} if follow_symlinks is None else {"follow_symlinks": follow_symlinks}
+
+
 def test_strict_soft_lower_intent_delayed_until_higher_selects(tmp_path: Path, mocker: MockerFixture) -> None:
     lock_path = tmp_path / "resource.lock"
     _initialize_protocol(lock_path)
@@ -34,7 +39,7 @@ def test_strict_soft_lower_intent_delayed_until_higher_selects(tmp_path: Path, m
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         name = Path(destination).name
         if threading.current_thread().name == "lower" and name.startswith("intent-"):
@@ -48,7 +53,7 @@ def test_strict_soft_lower_intent_delayed_until_higher_selects(tmp_path: Path, m
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
         if threading.current_thread().name == "lower" and name.startswith("held-"):
             lower_held_linked.set()
@@ -98,7 +103,7 @@ def test_strict_soft_lower_intent_delayed_until_higher_enters(tmp_path: Path, mo
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         if threading.current_thread().name == "lower" and Path(destination).name.startswith("intent-"):
             lower_intent_waiting.set()
@@ -108,7 +113,7 @@ def test_strict_soft_lower_intent_delayed_until_higher_enters(tmp_path: Path, mo
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     mocker.patch("filelock._strict.os.link", side_effect=delayed_link)
@@ -189,7 +194,7 @@ def test_strict_soft_shared_instance_waits_for_failed_doorway(tmp_path: Path, mo
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         if threading.current_thread().name == "first" and Path(destination).name.startswith("intent-"):
             first_doorway.set()
@@ -200,7 +205,7 @@ def test_strict_soft_shared_instance_waits_for_failed_doorway(tmp_path: Path, mo
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     def acquire_first() -> None:
@@ -223,7 +228,7 @@ def test_strict_soft_shared_instance_waits_for_failed_doorway(tmp_path: Path, mo
     fail_first.set()
     _join_threads(first, second)
     assert ([str(error) for error in first_errors], second_entered.is_set(), lock.is_locked) == (
-        ["[Errno 5] doorway failed"],
+        [f"[Errno {EIO}] doorway failed"],
         True,
         False,
     )
@@ -256,7 +261,7 @@ def test_strict_soft_shared_instance_transition_respects_admission(
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         if threading.current_thread().name == "first" and Path(destination).name.startswith("intent-"):
             first_doorway.set()
@@ -266,7 +271,7 @@ def test_strict_soft_shared_instance_transition_respects_admission(
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     def acquire_first() -> None:

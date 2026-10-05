@@ -11,6 +11,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Final, Literal, NoReturn
 
 import pytest
+from capabilities import CAPABILITIES
 
 from filelock import (
     AcquireReturnProxy,
@@ -23,7 +24,10 @@ from filelock import (
     SoftReadWriteLock,
     Timeout,
 )
-from tests.capability_marks import NEEDS_FORK, NEEDS_REGISTER_AT_FORK
+from tests.capability_marks import (
+    NEEDS_FORK,
+    NEEDS_REGISTER_AT_FORK,
+)
 from tests.fork_helpers import exit_child, fork_process
 
 if TYPE_CHECKING:
@@ -54,6 +58,8 @@ def test_child_cleanup_preserves_parent_lock(
     lock_type: type[BaseFileLock],
     action: Literal["release", "context", "collect"],
 ) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     path = str(tmp_path / "parent.lock")
     lock = lock_type(path, thread_local=False, is_singleton=False)
     proxy = lock.acquire()
@@ -84,6 +90,8 @@ def test_async_child_release_preserves_parent_lock(
     async_lock_type: type[BaseAsyncFileLock],
     sync_lock_type: type[BaseFileLock],
 ) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     path = str(tmp_path / "parent.lock")
     lock = async_lock_type(path, thread_local=False, is_singleton=False)
     asyncio.run(lock.acquire())
@@ -106,6 +114,8 @@ def test_async_child_release_preserves_parent_lock(
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_soft_read_write_resets_older_same_path_instance(tmp_path: Path) -> None:  # pragma: needs hard-link
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     path = str(tmp_path / "parent.lock")
     older = SoftReadWriteLock(path, is_singleton=False, heartbeat_interval=0.1, stale_threshold=0.5)
     newer = SoftReadWriteLock(path, is_singleton=False, heartbeat_interval=0.1, stale_threshold=0.5)
@@ -134,6 +144,8 @@ def test_soft_read_write_resets_older_same_path_instance(tmp_path: Path) -> None
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_child_closes_descriptor_held_by_vanished_thread(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     path = str(tmp_path / "parent.lock")
     descriptor: Queue[int] = Queue()
     acquired, release = threading.Event(), threading.Event()
@@ -163,6 +175,8 @@ def test_child_closes_descriptor_held_by_vanished_thread(tmp_path: Path) -> None
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_fork_waits_for_descriptor_registration(tmp_path: Path, mocker: MockerFixture) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     path = str(tmp_path / "parent.lock")
     lock = FileLock(path, thread_local=False, is_singleton=False)
     entered, proceed, acquired = threading.Event(), threading.Event(), threading.Event()
@@ -204,6 +218,8 @@ def test_fork_waits_for_descriptor_registration(tmp_path: Path, mocker: MockerFi
 def test_unrelated_acquisitions_reach_filesystem_boundary_concurrently(  # pragma: needs fork
     tmp_path: Path, mocker: MockerFixture
 ) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     boundary = threading.Barrier(3, timeout=5)
     real_fstat = os.fstat
 
@@ -242,6 +258,8 @@ def test_unrelated_acquisitions_reach_filesystem_boundary_concurrently(  # pragm
 @_FORK_WARNING
 @pytest.mark.parametrize("lock_type", [pytest.param(FileLock, id="native"), pytest.param(SoftFileLock, id="soft")])
 def test_child_singleton_registry_drops_parent_instance(tmp_path: Path, lock_type: type[BaseFileLock]) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     path = str(tmp_path / "parent.lock")
     parent_lock = lock_type(path, is_singleton=True)
 

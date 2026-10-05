@@ -10,7 +10,11 @@ import pytest
 from capabilities import CAPABILITIES
 
 from filelock import BaseFileLock, Timeout, has_fcntl
-from tests.capability_marks import NEEDS_AUDIT_EVENTS, NEEDS_FORK, NEEDS_FORK1
+from tests.capability_marks import (
+    NEEDS_AUDIT_EVENTS,
+    NEEDS_FORK,
+    NEEDS_FORK1,
+)
 from tests.fork_helpers import exit_child, fork_process
 
 if TYPE_CHECKING:
@@ -28,6 +32,8 @@ _NEEDS_SETTRACE_SAFE_AUDIT_HOOKS: Final[pytest.MarkDecorator] = pytest.mark.skip
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_callbacks_registered_before_filelock_can_use_locks(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     script = """
 from __future__ import annotations
 
@@ -333,6 +339,8 @@ raise SystemExit(lock.child_status)
 def test_native_descriptor_is_visible_during_flock_audit(
     tmp_path: Path, fork_mode: Literal["rejected-audit", "fork1"]
 ) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     script = """
 from __future__ import annotations
 
@@ -385,6 +393,8 @@ raise SystemExit(child_status)
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_child_unwinds_pre_fork_transition_before_new_acquire(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     script = """
 from __future__ import annotations
 
@@ -1016,6 +1026,8 @@ if (
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_singleton_construction_crossing_fork_does_not_poison_child_cache(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     script = """
 from __future__ import annotations
 
@@ -1075,6 +1087,8 @@ if (
 def test_soft_read_write_construction_crossing_fork_does_not_poison_child_cache(
     tmp_path: Path,
 ) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     script = """
 from __future__ import annotations
 
@@ -1143,6 +1157,8 @@ if os.waitstatus_to_exitcode(status) != 0 or parent_cached is not parent_lock:
 
 
 def test_fork_exec_from_another_thread_remains_available(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     entered, release, finished = threading.Event(), threading.Event(), threading.Event()
 
     class BlockingTransitionLock(BaseFileLock):
@@ -1173,6 +1189,8 @@ def test_fork_exec_from_another_thread_remains_available(tmp_path: Path) -> None
 @NEEDS_FORK  # pragma: needs fork
 @_FORK_WARNING
 def test_child_replaces_singleton_mutex_held_by_vanished_thread(tmp_path: Path) -> None:
+    if not CAPABILITIES["threading-after-fork"]:  # pragma: lacks threading-after-fork
+        pytest.skip("this runtime cannot start a new thread in a child forked from a multi-threaded parent")
     entered, release = threading.Event(), threading.Event()
     parent_pid = os.getpid()
 

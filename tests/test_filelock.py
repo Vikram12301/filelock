@@ -41,6 +41,7 @@ from filelock._api import _append_exception_context, _raise_grouped_errors, _reg
 from tests.capability_marks import (
     NEEDS_FCNTL,
     NEEDS_FILE_PERMISSIONS,
+    NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION,
     NEEDS_PARENT_SYMLINK_COLLAPSE,
     NEEDS_PROMPT_FINALIZATION,
     NEEDS_SYMLINK,
@@ -147,7 +148,7 @@ _INVALID_DESCRIPTOR_POLL_INTERVALS: Final = (
         # WindowsFileLock raises the real Win32 error the NTSTATUS maps to, so accept its wording alongside os.open's.
         pytest.param(
             OSError,
-            "No such file or directory:|cannot find the (path|file)|syntax is incorrect|Access is denied",
+            "No such file or directory[.:]|cannot find the (path|file)|syntax is incorrect|Access is denied",
             "",
             id="blank_filename",
         ),
@@ -1244,6 +1245,7 @@ def test_lock_acquired_after_release_keeps_path(tmp_path: Path) -> None:
 
 
 @NEEDS_FCNTL  # pragma: needs fcntl
+@NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION
 def test_waiter_fd_cannot_split_lock_after_release(tmp_path: Path) -> None:
     # typeshed hides fcntl's members off POSIX, so state the invariant the capability gate already enforces.
     assert sys.platform != "win32"
@@ -2324,6 +2326,7 @@ def test_lock_descriptor_roundtrip(tmp_path: Path) -> None:
         os.close(fd)
 
 
+@NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION
 def test_lock_descriptor_nonblocking_contention(tmp_path: Path) -> None:
     path = str(tmp_path / "a")
     holder = os.open(path, os.O_RDWR | os.O_CREAT)
@@ -2368,6 +2371,7 @@ def test_lock_descriptor_nonblocking_ignores_poll_interval(tmp_path: Path, poll_
         os.close(fd)
 
 
+@NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION
 @pytest.mark.parametrize("direction", ["filelock_first", "descriptor_first"])
 def test_filelock_and_descriptor_contend(tmp_path: Path, direction: str) -> None:
     path = str(tmp_path / "a")
@@ -2428,6 +2432,7 @@ def test_unlock_descriptor_failure_allows_retry(tmp_path: Path, mocker: MockerFi
         os.close(fd)
 
 
+@NEEDS_FLOCK_PER_OPEN_FILE_DESCRIPTION
 def test_lock_descriptor_blocking_retries_until_free(tmp_path: Path, mocker: MockerFixture) -> None:
     path = str(tmp_path / "a")
     holder = os.open(path, os.O_RDWR | os.O_CREAT)

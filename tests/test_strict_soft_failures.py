@@ -49,6 +49,11 @@ _PathValue = str | bytes | os.PathLike[str] | os.PathLike[bytes]
 pytestmark = pytest.mark.requires_hard_links
 
 
+def _follow_symlinks_kwargs(follow_symlinks: bool | None) -> dict[str, bool]:
+    # Forward the flag only when a caller set it: some platforms reject follow_symlinks even when it is True.
+    return {} if follow_symlinks is None else {"follow_symlinks": follow_symlinks}
+
+
 def test_strict_soft_protocol_error_pickles() -> None:
     error = SoftFileLockProtocolError("resource.lock", "held-v2-claim", "unknown version")
 
@@ -99,7 +104,7 @@ def test_strict_soft_held_publication_failure_rolls_back_intent(tmp_path: Path, 
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         if Path(os.fsdecode(destination)).name.startswith("held-"):
             raise OSError(EXDEV, "hard links unavailable")
@@ -108,7 +113,7 @@ def test_strict_soft_held_publication_failure_rolls_back_intent(tmp_path: Path, 
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     mocker.patch("filelock._strict.os.link", side_effect=fail_held)
@@ -130,14 +135,14 @@ def test_strict_soft_held_collision_does_not_delete_foreign_claim(tmp_path: Path
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         real_link(
             source,
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
         if Path(os.fsdecode(destination)).name.startswith("held-"):
             raise FileExistsError(EEXIST, "foreign claim won")
@@ -211,7 +216,7 @@ def test_strict_soft_reaper_removes_private_before_publication(tmp_path: Path, m
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         # The reaped private record aborts the acquisition at the intent link, so no held link ever reaches here.
         if Path(os.fsdecode(destination)).name.startswith("intent-"):  # pragma: no branch
@@ -222,7 +227,7 @@ def test_strict_soft_reaper_removes_private_before_publication(tmp_path: Path, m
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     mocker.patch("filelock._strict.secrets.token_hex", return_value=token)
@@ -247,14 +252,14 @@ def test_strict_soft_reaper_removes_private_after_publication(tmp_path: Path, mo
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         real_link(
             source,
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
         if Path(os.fsdecode(destination)).name.startswith("intent-"):
             assert len(StrictSoftFileLock(lock_path).claims) == 1
@@ -292,7 +297,7 @@ def test_strict_soft_reaper_replacement_only_aborts_publisher(tmp_path: Path, mo
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         # The reaped private record aborts the acquisition at the intent link, so no held link ever reaches here.
         if Path(os.fsdecode(destination)).name.startswith("intent-"):  # pragma: no branch
@@ -303,7 +308,7 @@ def test_strict_soft_reaper_replacement_only_aborts_publisher(tmp_path: Path, mo
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     mocker.patch("filelock._strict.secrets.token_hex", return_value=token)
@@ -383,7 +388,7 @@ def test_strict_soft_link_and_directory_close_failures_preserve_both(tmp_path: P
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert ([str(error) for error in raised.value.exceptions], lock.claims, lock.is_locked) == (
-        ["[Errno 5] link failed", "[Errno 5] directory close failed"],
+        [f"[Errno {EIO}] link failed", f"[Errno {EIO}] directory close failed"],
         (),
         False,
     )
@@ -551,7 +556,7 @@ def test_strict_soft_release_preserves_unlink_and_directory_close_errors(tmp_pat
         lock.lock_counter,
         [claim.state for claim in lock.claims],
     ) == (
-        ["[Errno 13] claim unlink failed", "[Errno 5] directory close failed"],
+        [f"[Errno {EACCES}] claim unlink failed", f"[Errno {EIO}] directory close failed"],
         True,
         1,
         ["held"],
@@ -617,9 +622,9 @@ def test_strict_soft_doorway_preserves_every_claim_cleanup_error(tmp_path: Path,
         lock.is_locked,
     ) == (
         [
-            "[Errno 13] held unlink failed",
-            "[Errno 5] held directory close failed",
-            "[Errno 5] intent directory close failed",
+            f"[Errno {EACCES}] held unlink failed",
+            f"[Errno {EIO}] held directory close failed",
+            f"[Errno {EIO}] intent directory close failed",
         ],
         [competitor_name, f"held-v1-{owner_token}.claim"],
         True,
@@ -648,7 +653,7 @@ def test_strict_soft_sentinel_publication_race(
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         nonlocal raced
         if not raced:
@@ -660,7 +665,7 @@ def test_strict_soft_sentinel_publication_race(
             destination,
             src_dir_fd=src_dir_fd,
             dst_dir_fd=dst_dir_fd,
-            follow_symlinks=follow_symlinks,
+            **_follow_symlinks_kwargs(follow_symlinks),
         )
 
     mocker.patch("filelock._strict.os.link", side_effect=publish_competitor)
@@ -1014,7 +1019,7 @@ def test_strict_soft_sentinel_inspection_and_close_failure_group(tmp_path: Path,
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert ([str(error) for error in raised.value.exceptions], lock.is_locked) == (
-        ["[Errno 5] sentinel inspection failed", "[Errno 5] sentinel close failed"],
+        [f"[Errno {EIO}] sentinel inspection failed", f"[Errno {EIO}] sentinel close failed"],
         False,
     )
 
@@ -1232,7 +1237,7 @@ def test_strict_soft_record_finalization_close_and_unlink_failures_group(tmp_pat
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert (sorted(str(error) for error in raised.value.exceptions), lock.is_locked) == (
-        ["[Errno 13] unlink denied", "[Errno 5] private close failed"],
+        [f"[Errno {EACCES}] unlink denied", f"[Errno {EIO}] private close failed"],
         False,
     )
 
@@ -1249,7 +1254,7 @@ def test_strict_soft_release_claim_unlink_failures_group(tmp_path: Path, mocker:
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.release()
     assert ([str(error) for error in raised.value.exceptions], lock.is_locked, len(lock.claims)) == (
-        ["[Errno 13] claim unlink denied", "[Errno 13] claim unlink denied"],
+        [f"[Errno {EACCES}] claim unlink denied", f"[Errno {EACCES}] claim unlink denied"],
         True,
         2,
     )
@@ -1383,7 +1388,7 @@ def test_strict_soft_record_read_and_close_failure_group(tmp_path: Path, mocker:
     messages = [str(error) for error in raised.value.exceptions]
     assert (
         any("exceeds 1024 bytes" in message for message in messages),
-        "[Errno 5] record close failed" in messages,
+        f"[Errno {EIO}] record close failed" in messages,
     ) == (
         True,
         True,
@@ -1419,13 +1424,19 @@ def test_strict_soft_held_link_and_directory_close_failure(tmp_path: Path, mocke
         *,
         src_dir_fd: int | None = None,
         dst_dir_fd: int | None = None,
-        follow_symlinks: bool = True,
+        follow_symlinks: bool | None = None,
     ) -> None:
         nonlocal held_failed
         if Path(os.fsdecode(destination)).name.startswith("held-"):
             held_failed = True
             raise OSError(EIO, "held link failed")
-        real_link(source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks)
+        real_link(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            **_follow_symlinks_kwargs(follow_symlinks),
+        )
 
     def fail_directory_close_after_held(fd: int) -> None:
         nonlocal directory_closed
@@ -1442,7 +1453,7 @@ def test_strict_soft_held_link_and_directory_close_failure(tmp_path: Path, mocke
     with pytest.raises(BaseExceptionGroup) as raised:
         lock.acquire()
     assert ([str(error) for error in raised.value.exceptions], lock.is_locked, lock.claims) == (
-        ["[Errno 5] held link failed", "[Errno 5] held link directory close failed"],
+        [f"[Errno {EIO}] held link failed", f"[Errno {EIO}] held link directory close failed"],
         False,
         (),
     )

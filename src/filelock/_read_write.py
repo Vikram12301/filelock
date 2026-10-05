@@ -770,7 +770,11 @@ def _connect(database: str, *, factory: type[_ForkSafeConnection], timeout: floa
         if sys.platform != "win32" and not os.access(target, os.F_OK):  # pragma: needs posix-hard-link
             directory = pathlib.Path(tempfile.mkdtemp(prefix=".filelock-"))
             target = directory / "lock.db"
-            os.link(database, target, follow_symlinks=False)
+            if sys.platform == "zos":  # pragma: no cover
+                # z/OS cannot refuse symlinks in os.link; the inode check below rejects a path swapped after the open.
+                os.link(database, target)
+            else:
+                os.link(database, target, follow_symlinks=False)
             linked: Final = target.stat(follow_symlinks=False)
             opened: Final = os.fstat(fd)
             if (linked.st_dev, linked.st_ino) != (opened.st_dev, opened.st_ino):
@@ -799,11 +803,25 @@ def _open_lock_database(database: str) -> int:
             msg = f"lock database {database!r} is being deleted or held without sharing"
             raise PermissionError(msg)
         return fd
+    if sys.platform == "zos":  # pragma: no cover
+        # z/OS has no O_NOFOLLOW, so refuse a symlink before O_CREAT could create the target it points at.
+        with suppress(FileNotFoundError):
+            if stat.S_ISLNK(os.lstat(database).st_mode):
+                msg = f"refusing a symlinked lock database: {database!r}"
+                raise OSError(msg)
     fd = os.open(database, _DB_OPEN_FLAGS, 0o600)  # pragma: win32 no cover
     if not stat.S_ISREG(os.fstat(fd).st_mode):  # pragma: win32 no cover
         os.close(fd)
         msg = f"refusing a non-regular lock database: {database!r}"
         raise OSError(msg)
+    if sys.platform == "zos":  # pragma: no cover
+        # The name must still name the inode we opened, since the open followed any symlink it found.
+        opened: Final = os.fstat(fd)
+        named: Final = os.lstat(database)
+        if (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino):
+            os.close(fd)
+            msg = f"refusing a symlinked lock database: {database!r}"
+            raise OSError(msg)
     return fd  # pragma: win32 no cover
 
 
