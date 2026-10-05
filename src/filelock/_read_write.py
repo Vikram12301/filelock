@@ -55,6 +55,7 @@ _MAX_SQLITE_TIMEOUT_MS: Final[int] = 2_000_000_000 - 1
 _UNSAFE_FORK_EXIT_STATUS: Final[int] = 70
 # O_NONBLOCK keeps an open from blocking on a FIFO planted at the path; the regular-file check then rejects it.
 _DB_OPEN_FLAGS: Final[int] = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+_OPEN_REFUSES_SYMLINKS: Final[bool] = hasattr(os, "O_NOFOLLOW")
 # Linux names an open descriptor under /proc/self/fd, macOS and the BSDs under /dev/fd. SQLite connects through that
 # name, so it reopens the inode already validated, and journal_mode=MEMORY keeps it from deriving an on-disk journal
 # name from the synthetic path.
@@ -804,11 +805,25 @@ def _open_lock_database(database: str) -> int:
             msg = f"lock database {database!r} is being deleted or held without sharing"
             raise PermissionError(msg)
         return fd
+    if not _OPEN_REFUSES_SYMLINKS:  # pragma: lacks o-nofollow
+        # O_CREAT on a dangling link would create the target, so refuse a link before opening rather than after.
+        with suppress(FileNotFoundError):
+            if stat.S_ISLNK(os.lstat(database).st_mode):
+                msg = f"refusing a symlinked lock database: {database!r}"
+                raise OSError(msg)
     fd = os.open(database, _DB_OPEN_FLAGS, 0o600)  # pragma: win32 no cover
-    if not stat.S_ISREG(os.fstat(fd).st_mode):  # pragma: win32 no cover
+    opened: Final = os.fstat(fd)
+    if not stat.S_ISREG(opened.st_mode):  # pragma: win32 no cover
         os.close(fd)
         msg = f"refusing a non-regular lock database: {database!r}"
         raise OSError(msg)
+    if not _OPEN_REFUSES_SYMLINKS:  # pragma: lacks o-nofollow
+        # Without O_NOFOLLOW the open followed any symlink, so the name must still name the inode we opened.
+        named: Final = os.lstat(database)
+        if (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino):
+            os.close(fd)
+            msg = f"refusing a symlinked lock database: {database!r}"
+            raise OSError(msg)
     return fd  # pragma: win32 no cover
 
 
