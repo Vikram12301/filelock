@@ -24,6 +24,7 @@ from ._api import (
     _register_fork_object,
 )
 from ._error import Timeout
+from ._strict import _LINK_HONORS_FOLLOW_SYMLINKS
 
 if sys.platform == "win32":  # pragma: win32 cover
     from ._windows import _open_non_reparse_fd
@@ -770,7 +771,11 @@ def _connect(database: str, *, factory: type[_ForkSafeConnection], timeout: floa
         if sys.platform != "win32" and not os.access(target, os.F_OK):  # pragma: needs posix-hard-link
             directory = pathlib.Path(tempfile.mkdtemp(prefix=".filelock-"))
             target = directory / "lock.db"
-            os.link(database, target, follow_symlinks=False)
+            if _LINK_HONORS_FOLLOW_SYMLINKS:
+                os.link(database, target, follow_symlinks=False)
+            else:  # pragma: lacks link-follow-symlinks
+                # The inode check below rejects any path that was swapped to another file after the open.
+                os.link(database, target)
             linked: Final = target.stat(follow_symlinks=False)
             opened: Final = os.fstat(fd)
             if (linked.st_dev, linked.st_ino) != (opened.st_dev, opened.st_ino):
